@@ -52,8 +52,10 @@
 | Configuration | ✅ Complete | Settings and preferences system |
 | Memory Management | ✅ Complete | Pool allocators and tracking |
 | **Graphics** | | |
-| Renderer (SDL2/OpenGL) | 🔶 Stub | Window and rendering context |
-| Sprite System | 🔶 Stub | Sprite loading and animation |
+| Renderer (SDL2) | ✅ Complete | Window, textures, and 2D rendering |
+| VFX Shape Reader | ✅ Complete | Load sprites from shape tables |
+| Palette System | ✅ Complete | 256-color palettes, indexed→RGBA |
+| Sprite System | ✅ Complete | Multi-frame sprites, animation |
 | Terrain Renderer | 🔶 Stub | Isometric tile rendering |
 | UI System | 🔶 Stub | Interface elements |
 | **Audio** | | |
@@ -161,12 +163,16 @@ mcgoldng/
 │   │   ├── fst_reader.*    # FST archive format
 │   │   ├── pak_reader.*    # PAK archive format
 │   │   ├── fit_parser.*    # FIT config format
+│   │   ├── shape_reader.*  # VFX shape table format
 │   │   └── lz_decompress.* # Decompression
 │   ├── core/               # Engine core
 │   │   ├── engine.*        # Game loop
 │   │   ├── config.*        # Settings
 │   │   └── memory.*        # Memory management
 │   ├── graphics/           # Rendering
+│   │   ├── renderer.*      # SDL2 2D rendering
+│   │   ├── sprite.*        # Sprite and animation
+│   │   └── palette.*       # Color palettes
 │   ├── audio/              # Sound
 │   ├── video/              # Video playback
 │   └── game/               # Game logic
@@ -195,13 +201,16 @@ mcgoldng/
 - [x] Memory management
 - [ ] Resource manager with caching
 
-### Phase 3: Graphics
-- [ ] SDL2 window creation
-- [ ] OpenGL context setup
-- [ ] Sprite loading from PAK
-- [ ] Palette handling (8-bit indexed)
+### Phase 3: Graphics 🔶
+- [x] SDL2 window creation
+- [x] 2D renderer with textures
+- [x] VFX shape table parsing
+- [x] Sprite loading from PAK
+- [x] Palette handling (8-bit indexed → RGBA)
+- [x] Sprite animation support
 - [ ] Isometric terrain rendering
 - [ ] UI rendering
+- [ ] Resolution scaling
 
 ### Phase 4: Audio & Video
 - [ ] SDL2_mixer audio playback

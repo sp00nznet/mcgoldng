@@ -63,7 +63,8 @@ bool loadTestSprites(const std::string& assetsPath) {
 
     LOG("loadTestSprites: assetsPath = " + assetsPath);
 
-    // Try to load a sprite PAK from the game's DATA/SPRITES directory
+    // Try to load sprite PAKs from the game's DATA/SPRITES directory
+    // CURSORS.PAK has simple shape tables, mech PAKs have nested PAK structure
     std::vector<std::string> pakPaths = {
         assetsPath + "\\DATA\\SPRITES\\CURSORS.PAK",
         assetsPath + "/DATA/SPRITES/CURSORS.PAK",
@@ -96,14 +97,22 @@ bool loadTestSprites(const std::string& assetsPath) {
     std::vector<mcgng::SpriteFrame> frames;
     auto& renderer = mcgng::Renderer::instance();
 
-    size_t maxPackets = std::min(pak.getNumPackets(), size_t(50));  // Limit to 50 cursors
+    size_t maxPackets = std::min(pak.getNumPackets(), size_t(50));  // Limit to 50
     for (size_t i = 0; i < maxPackets; ++i) {
         std::vector<uint8_t> packetData = pak.readPacket(i);
-        if (packetData.empty()) {
+        if (packetData.empty() || packetData.size() < 8) {
             continue;
         }
 
-        // Try to load as shape table
+        // Check if this packet is a nested PAK (starts with 0xFEEDFACE)
+        // Mech sprite PAKs use this nested structure - skip for now
+        uint32_t magic = *reinterpret_cast<const uint32_t*>(packetData.data());
+        if (magic == mcgng::PakReader::PAK_MAGIC) {
+            LOG("Packet " + std::to_string(i) + ": Nested PAK (skipped)");
+            continue;
+        }
+
+        // Try to load as direct shape table
         mcgng::ShapeReader shapes;
         if (!shapes.load(packetData.data(), packetData.size())) {
             continue;
