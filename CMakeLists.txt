@@ -31,11 +31,32 @@ else()
     set(MCGNG_HAS_ZLIB FALSE)
 endif()
 
-# Optional packages for the main game
+# Find SDL2 (required for graphics/audio)
 find_package(SDL2 CONFIG QUIET)
+if(NOT SDL2_FOUND)
+    # Try alternative find methods
+    find_package(SDL2 QUIET)
+endif()
+
+if(SDL2_FOUND)
+    message(STATUS "Found SDL2")
+    set(MCGNG_HAS_SDL2 TRUE)
+    add_definitions(-DMCGNG_HAS_SDL2)
+else()
+    message(STATUS "SDL2 not found - graphics disabled")
+    set(MCGNG_HAS_SDL2 FALSE)
+endif()
+
+# Find SDL2_mixer (optional - for audio)
 find_package(SDL2_mixer CONFIG QUIET)
-find_package(OpenGL QUIET)
-find_package(GLEW QUIET)
+if(SDL2_mixer_FOUND)
+    message(STATUS "Found SDL2_mixer")
+    set(MCGNG_HAS_SDL2_MIXER TRUE)
+    add_definitions(-DMCGNG_HAS_SDL2_MIXER)
+else()
+    message(STATUS "SDL2_mixer not found - audio disabled")
+    set(MCGNG_HAS_SDL2_MIXER FALSE)
+endif()
 
 # Core asset library (used by both tools and game)
 add_library(mcgng_assets STATIC
@@ -76,95 +97,155 @@ if(MCGNG_BUILD_TOOLS)
     endif()
 endif()
 
-# Main game executable (only if SDL2 and OpenGL are available)
-if(SDL2_FOUND AND OPENGL_FOUND AND GLEW_FOUND)
-    add_library(mcgng_core STATIC
-        src/core/engine.cpp
-        src/core/config.cpp
-        src/core/memory.cpp
-    )
+# Core engine library (always built, stubs when SDL2 not available)
+add_library(mcgng_core STATIC
+    src/core/engine.cpp
+    src/core/config.cpp
+    src/core/memory.cpp
+)
 
-    target_include_directories(mcgng_core PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-    )
+target_include_directories(mcgng_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
 
-    target_link_libraries(mcgng_core PUBLIC
-        mcgng_assets
-    )
+target_link_libraries(mcgng_core PUBLIC
+    mcgng_assets
+)
 
-    add_library(mcgng_graphics STATIC
-        src/graphics/renderer.cpp
-        src/graphics/sprite.cpp
-        src/graphics/terrain.cpp
-        src/graphics/ui.cpp
-    )
-
-    target_include_directories(mcgng_graphics PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-    )
-
-    target_link_libraries(mcgng_graphics PUBLIC
-        mcgng_core
-        SDL2::SDL2
-        OpenGL::GL
-        GLEW::GLEW
-    )
-
-    add_library(mcgng_audio STATIC
-        src/audio/audio_system.cpp
-        src/audio/music_manager.cpp
-    )
-
-    target_include_directories(mcgng_audio PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-    )
-
-    target_link_libraries(mcgng_audio PUBLIC
-        mcgng_core
-        SDL2_mixer::SDL2_mixer
-    )
-
-    add_library(mcgng_video STATIC
-        src/video/smk_player.cpp
-    )
-
-    target_include_directories(mcgng_video PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-    )
-
-    target_link_libraries(mcgng_video PUBLIC
-        mcgng_core
-    )
-
-    add_library(mcgng_game STATIC
-        src/game/mission.cpp
-        src/game/mech.cpp
-        src/game/combat.cpp
-    )
-
-    target_include_directories(mcgng_game PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-    )
-
-    target_link_libraries(mcgng_game PUBLIC
-        mcgng_core
-    )
-
-    add_executable(mcgoldng
-        src/main.cpp
-    )
-
-    target_link_libraries(mcgoldng PRIVATE
-        mcgng_core
-        mcgng_graphics
-        mcgng_audio
-        mcgng_video
-        mcgng_game
-        SDL2::SDL2main
-    )
-else()
-    message(STATUS "SDL2, OpenGL, or GLEW not found - building tools only")
+if(MCGNG_HAS_SDL2)
+    target_link_libraries(mcgng_core PUBLIC SDL2::SDL2)
 endif()
+
+if(MSVC)
+    target_compile_options(mcgng_core PRIVATE /W4)
+else()
+    target_compile_options(mcgng_core PRIVATE -Wall -Wextra)
+endif()
+
+# Graphics library (works with or without SDL2)
+add_library(mcgng_graphics STATIC
+    src/graphics/renderer.cpp
+    src/graphics/sprite.cpp
+    src/graphics/terrain.cpp
+    src/graphics/ui.cpp
+)
+
+target_include_directories(mcgng_graphics PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mcgng_graphics PUBLIC
+    mcgng_core
+)
+
+if(MCGNG_HAS_SDL2)
+    target_link_libraries(mcgng_graphics PUBLIC SDL2::SDL2)
+endif()
+
+if(MSVC)
+    target_compile_options(mcgng_graphics PRIVATE /W4)
+else()
+    target_compile_options(mcgng_graphics PRIVATE -Wall -Wextra)
+endif()
+
+# Audio library
+add_library(mcgng_audio STATIC
+    src/audio/audio_system.cpp
+    src/audio/music_manager.cpp
+)
+
+target_include_directories(mcgng_audio PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mcgng_audio PUBLIC
+    mcgng_core
+)
+
+if(MCGNG_HAS_SDL2_MIXER)
+    target_link_libraries(mcgng_audio PUBLIC SDL2_mixer::SDL2_mixer)
+endif()
+
+if(MSVC)
+    target_compile_options(mcgng_audio PRIVATE /W4)
+else()
+    target_compile_options(mcgng_audio PRIVATE -Wall -Wextra)
+endif()
+
+# Video library
+add_library(mcgng_video STATIC
+    src/video/smk_player.cpp
+)
+
+target_include_directories(mcgng_video PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mcgng_video PUBLIC
+    mcgng_core
+)
+
+if(MSVC)
+    target_compile_options(mcgng_video PRIVATE /W4)
+else()
+    target_compile_options(mcgng_video PRIVATE -Wall -Wextra)
+endif()
+
+# Game logic library
+add_library(mcgng_game STATIC
+    src/game/mission.cpp
+    src/game/mech.cpp
+    src/game/combat.cpp
+)
+
+target_include_directories(mcgng_game PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mcgng_game PUBLIC
+    mcgng_core
+)
+
+if(MSVC)
+    target_compile_options(mcgng_game PRIVATE /W4)
+else()
+    target_compile_options(mcgng_game PRIVATE -Wall -Wextra)
+endif()
+
+# Main game executable
+add_executable(mcgoldng
+    src/main.cpp
+)
+
+target_link_libraries(mcgoldng PRIVATE
+    mcgng_core
+    mcgng_graphics
+    mcgng_audio
+    mcgng_video
+    mcgng_game
+)
+
+if(MCGNG_HAS_SDL2)
+    # Link SDL2main for proper entry point on Windows
+    if(TARGET SDL2::SDL2main)
+        target_link_libraries(mcgoldng PRIVATE SDL2::SDL2main)
+    endif()
+endif()
+
+if(MSVC)
+    target_compile_options(mcgoldng PRIVATE /W4)
+else()
+    target_compile_options(mcgoldng PRIVATE -Wall -Wextra)
+endif()
+
+# Summary
+message(STATUS "")
+message(STATUS "MCG-NG Configuration Summary:")
+message(STATUS "  ZLIB:        ${MCGNG_HAS_ZLIB}")
+message(STATUS "  SDL2:        ${MCGNG_HAS_SDL2}")
+message(STATUS "  SDL2_mixer:  ${MCGNG_HAS_SDL2_MIXER}")
+message(STATUS "  Build tools: ${MCGNG_BUILD_TOOLS}")
+message(STATUS "")
 
 # Tests
 if(MCGNG_BUILD_TESTS)

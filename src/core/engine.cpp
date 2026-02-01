@@ -1,8 +1,13 @@
 #include "core/engine.h"
 #include "core/config.h"
+#include "graphics/renderer.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
+
+#ifdef MCGNG_HAS_SDL2
+#include <SDL.h>
+#endif
 
 namespace mcgng {
 
@@ -66,8 +71,21 @@ bool Engine::initializeSubsystems() {
         return true;
     }
 
-    // Initialize SDL, audio, video subsystems here when implemented
-    // For now, just return success
+    auto& config = ConfigManager::instance().get();
+
+    // Initialize renderer
+    auto& renderer = Renderer::instance();
+    if (!renderer.initialize("MechCommander Gold: Next Generation",
+                             config.windowWidth, config.windowHeight,
+                             config.fullscreen)) {
+        std::cerr << "Engine: Failed to initialize renderer\n";
+        return false;
+    }
+
+    // Set logical size for resolution independence
+    // Original MCG was 640x480 or 800x600, we scale up
+    renderer.setLogicalSize(800, 600);
+
     std::cout << "Engine: Subsystems initialized\n";
     return true;
 }
@@ -87,7 +105,9 @@ void Engine::shutdown() {
 }
 
 void Engine::shutdownSubsystems() {
-    // Shutdown SDL, audio, video subsystems here when implemented
+    if (!m_headless) {
+        Renderer::instance().shutdown();
+    }
 }
 
 void Engine::run() {
@@ -147,7 +167,27 @@ void Engine::processFrame() {
         m_fpsFrameCount = 0;
     }
 
-    // Process events
+    // Process SDL events
+#ifdef MCGNG_HAS_SDL2
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_QUIT) {
+            m_quitRequested = true;
+            return;
+        }
+        if (event.type == SDL_KEYDOWN) {
+            if (event.key.keysym.sym == SDLK_ESCAPE) {
+                m_quitRequested = true;
+                return;
+            }
+            if (event.key.keysym.sym == SDLK_F11) {
+                Renderer::instance().toggleFullscreen();
+            }
+        }
+    }
+#endif
+
+    // Process custom events
     if (m_eventCallback) {
         if (!m_eventCallback()) {
             m_quitRequested = true;
@@ -160,9 +200,34 @@ void Engine::processFrame() {
         m_updateCallback(m_deltaTime);
     }
 
-    // Render (always, even when paused)
-    if (!m_headless && m_renderCallback) {
-        m_renderCallback();
+    // Render
+    if (!m_headless) {
+        auto& renderer = Renderer::instance();
+        renderer.beginFrame();
+
+        // Clear with dark blue
+        renderer.clear({20, 30, 50, 255});
+
+        // Draw a simple test pattern
+        renderer.setDrawColor({100, 150, 200, 255});
+        renderer.drawRect({50, 50, 200, 100});
+
+        renderer.setDrawColor({200, 100, 100, 255});
+        renderer.drawRectOutline({300, 200, 150, 150});
+
+        renderer.setDrawColor({100, 200, 100, 255});
+        renderer.drawLine(400, 100, 600, 300);
+
+        // Draw FPS counter area
+        renderer.setDrawColor({50, 50, 50, 200});
+        renderer.drawRect({10, 10, 100, 25});
+
+        // Call custom render callback
+        if (m_renderCallback) {
+            m_renderCallback();
+        }
+
+        renderer.endFrame();
     }
 }
 
