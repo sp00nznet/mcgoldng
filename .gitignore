@@ -1,0 +1,59 @@
+# Build directories
+build/
+out/
+cmake-build-*/
+
+# IDE files
+.vs/
+.vscode/
+*.sln
+*.vcxproj*
+*.user
+*.suo
+.idea/
+*.swp
+*.swo
+*~
+
+# Compiled files
+*.obj
+*.o
+*.a
+*.lib
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdb
+*.ilk
+*.exp
+
+# CMake generated
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+Makefile
+
+# Package managers
+vcpkg_installed/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test output
+Testing/
+CTestTestfile.cmake
+
+# Extracted game assets (user-specific)
+extracted/
+/assets/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
