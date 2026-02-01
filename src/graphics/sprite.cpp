@@ -1,5 +1,6 @@
 #include "graphics/sprite.h"
 #include <algorithm>
+#include <iostream>
 
 namespace mcgng {
 
@@ -96,6 +97,84 @@ bool Sprite::createSingleIndexed(const uint8_t* pixels, const uint8_t* palette,
 
     m_frames.push_back(frame);
     return true;
+}
+
+bool Sprite::loadFromShape(const ShapeData& shape, const Palette& palette) {
+    if (shape.pixels.empty() || shape.width <= 0 || shape.height <= 0) {
+        return false;
+    }
+
+    destroyTextures();
+
+    // Convert indexed pixels to RGBA
+    size_t pixelCount = static_cast<size_t>(shape.width * shape.height);
+    std::vector<uint8_t> rgba(pixelCount * 4);
+    palette.convertToRGBA(shape.pixels.data(), rgba.data(), pixelCount, 0);
+
+    // Create texture
+    SpriteFrame frame;
+    frame.texture = Renderer::instance().createTexture(rgba.data(), shape.width, shape.height);
+    frame.width = shape.width;
+    frame.height = shape.height;
+    frame.offsetX = shape.hotspotX;
+    frame.offsetY = shape.hotspotY;
+
+    if (frame.texture == INVALID_TEXTURE) {
+        std::cerr << "Sprite: Failed to create texture from shape" << std::endl;
+        return false;
+    }
+
+    m_frames.push_back(frame);
+    return true;
+}
+
+bool Sprite::loadFromShapes(const ShapeReader& reader, const Palette& palette,
+                            uint32_t startIndex, uint32_t count) {
+    if (!reader.isLoaded()) {
+        return false;
+    }
+
+    destroyTextures();
+
+    uint32_t shapeCount = reader.getShapeCount();
+    if (startIndex >= shapeCount) {
+        return false;
+    }
+
+    // Determine how many shapes to load
+    uint32_t endIndex = (count == 0) ? shapeCount : std::min(startIndex + count, shapeCount);
+
+    for (uint32_t i = startIndex; i < endIndex; ++i) {
+        ShapeData shape = reader.decodeShape(i);
+        if (shape.pixels.empty() || shape.width <= 0 || shape.height <= 0) {
+            // Skip invalid shapes but continue
+            std::cerr << "Sprite: Skipping invalid shape " << i << std::endl;
+            continue;
+        }
+
+        // Convert indexed pixels to RGBA
+        size_t pixelCount = static_cast<size_t>(shape.width * shape.height);
+        std::vector<uint8_t> rgba(pixelCount * 4);
+        palette.convertToRGBA(shape.pixels.data(), rgba.data(), pixelCount, 0);
+
+        // Create texture
+        SpriteFrame frame;
+        frame.texture = Renderer::instance().createTexture(rgba.data(), shape.width, shape.height);
+        frame.width = shape.width;
+        frame.height = shape.height;
+        frame.offsetX = shape.hotspotX;
+        frame.offsetY = shape.hotspotY;
+
+        if (frame.texture == INVALID_TEXTURE) {
+            std::cerr << "Sprite: Failed to create texture for shape " << i << std::endl;
+            continue;
+        }
+
+        m_frames.push_back(frame);
+    }
+
+    std::cout << "Sprite: Loaded " << m_frames.size() << " frames from shapes" << std::endl;
+    return !m_frames.empty();
 }
 
 void Sprite::addAnimation(const Animation& anim) {

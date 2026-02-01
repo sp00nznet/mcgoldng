@@ -2,6 +2,8 @@
 #define MCGNG_SPRITE_H
 
 #include "graphics/renderer.h"
+#include "graphics/palette.h"
+#include "assets/shape_reader.h"
 #include <cstdint>
 #include <vector>
 #include <string>
@@ -70,6 +72,25 @@ public:
      */
     bool createSingleIndexed(const uint8_t* pixels, const uint8_t* palette,
                              int width, int height);
+
+    /**
+     * Create sprite from decoded VFX shape data.
+     * @param shape Decoded shape data
+     * @param palette Palette for color conversion
+     * @return true on success
+     */
+    bool loadFromShape(const ShapeData& shape, const Palette& palette);
+
+    /**
+     * Create multi-frame sprite from VFX shape reader.
+     * @param reader Shape reader with loaded shape table
+     * @param palette Palette for color conversion
+     * @param startIndex First shape index to load
+     * @param count Number of shapes to load (0 = all remaining)
+     * @return true on success
+     */
+    bool loadFromShapes(const ShapeReader& reader, const Palette& palette,
+                        uint32_t startIndex = 0, uint32_t count = 0);
 
     /**
      * Add an animation sequence.

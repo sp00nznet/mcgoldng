@@ -64,6 +64,7 @@ add_library(mcgng_assets STATIC
     src/assets/fst_reader.cpp
     src/assets/pak_reader.cpp
     src/assets/fit_parser.cpp
+    src/assets/shape_reader.cpp
 )
 
 target_include_directories(mcgng_assets PUBLIC
@@ -126,6 +127,7 @@ endif()
 add_library(mcgng_graphics STATIC
     src/graphics/renderer.cpp
     src/graphics/sprite.cpp
+    src/graphics/palette.cpp
     src/graphics/terrain.cpp
     src/graphics/ui.cpp
 )
