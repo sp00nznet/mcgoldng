@@ -12,6 +12,8 @@
 #include "graphics/sprite.h"
 #include "graphics/palette.h"
 #include "graphics/terrain.h"
+#include "audio/audio_system.h"
+#include "audio/music_manager.h"
 #include "assets/pak_reader.h"
 #include "assets/shape_reader.h"
 #include "assets/nested_pak_reader.h"
@@ -61,6 +63,9 @@ float g_frameTimer = 0.0f;
 
 // Mech sprite data
 mcgng::NestedPakReader g_mechPak;
+
+// Music
+mcgng::MusicHandle g_musicTrack = mcgng::INVALID_MUSIC;
 
 // Macro for logging to both console and file
 #define LOG(msg) do { std::cout << msg << std::endl; if (g_debugLog.is_open()) g_debugLog << msg << std::endl; } while(0)
@@ -344,6 +349,45 @@ bool loadTerrainTiles(const std::string& assetsPath) {
     return false;
 }
 
+bool initializeAudio(const std::string& assetsPath) {
+    // Initialize audio system
+    auto& audio = mcgng::AudioSystem::instance();
+    if (!audio.initialize()) {
+        LOG("Failed to initialize audio system");
+        return false;
+    }
+    LOG("Audio system initialized");
+
+    // Initialize music manager
+    auto& music = mcgng::MusicManager::instance();
+    if (!music.initialize()) {
+        LOG("Failed to initialize music manager");
+        return false;
+    }
+    LOG("Music manager initialized");
+
+    // Try to load a music track
+    std::vector<std::string> musicPaths = {
+        assetsPath + "\\DATA\\SOUND\\MUSIC00.WAV",
+        assetsPath + "/DATA/SOUND/MUSIC00.WAV",
+    };
+
+    for (const auto& path : musicPaths) {
+        g_musicTrack = music.loadTrack(path);
+        if (g_musicTrack != mcgng::INVALID_MUSIC) {
+            LOG("Loaded music track: " + path);
+            // Start playing with fade in
+            music.play(g_musicTrack, 2.0f);  // 2 second fade in
+            music.setVolume(0.5f);  // 50% volume
+            LOG("Music playback started");
+            return true;
+        }
+    }
+
+    LOG("Could not load music track");
+    return false;
+}
+
 int main(int argc, char* argv[]) {
     // Open debug log file
     g_debugLog.open("mcgoldng_debug.log");
@@ -430,8 +474,19 @@ int main(int argc, char* argv[]) {
         std::cout << "Could not load terrain tiles\n";
     }
 
+    // Initialize audio and start music
+    bool audioLoaded = initializeAudio(options.assetsPath);
+    if (audioLoaded) {
+        std::cout << "Audio initialized and music playing!\n";
+    } else {
+        std::cout << "Audio not available\n";
+    }
+
     // Set up callbacks
     engine.setUpdateCallback([](float deltaTime) {
+        // Update music manager (for fade effects)
+        mcgng::MusicManager::instance().update(deltaTime);
+
         // Animate the test sprite
         if (g_testSprite && g_testSprite->getFrameCount() > 1) {
             g_frameTimer += deltaTime;
@@ -514,7 +569,11 @@ int main(int argc, char* argv[]) {
     // Run main loop
     engine.run();
 
-    // Cleanup
+    // Cleanup audio
+    mcgng::MusicManager::instance().shutdown();
+    mcgng::AudioSystem::instance().shutdown();
+
+    // Cleanup engine
     engine.shutdown();
 
     std::cout << "Thank you for playing!\n";

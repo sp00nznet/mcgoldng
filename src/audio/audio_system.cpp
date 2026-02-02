@@ -2,8 +2,9 @@
 #include <iostream>
 #include <algorithm>
 
-// Note: Full implementation requires SDL2_mixer
-// This is a stub that compiles without SDL2_mixer
+#ifdef MCGNG_HAS_SDL2_MIXER
+#include <SDL_mixer.h>
+#endif
 
 namespace mcgng {
 
@@ -29,15 +30,18 @@ bool AudioSystem::initialize(int frequency, int channels) {
 
     m_numChannels = channels;
 
-    // TODO: Initialize SDL2_mixer
-    // if (Mix_OpenAudio(frequency, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
-    //     std::cerr << "AudioSystem: Failed to initialize SDL_mixer\n";
-    //     return false;
-    // }
-    // Mix_AllocateChannels(channels);
+#ifdef MCGNG_HAS_SDL2_MIXER
+    if (Mix_OpenAudio(frequency, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        std::cerr << "AudioSystem: Failed to initialize SDL_mixer: " << Mix_GetError() << "\n";
+        return false;
+    }
+    Mix_AllocateChannels(channels);
+    std::cout << "AudioSystem: SDL2_mixer initialized successfully\n";
+#else
+    std::cout << "AudioSystem: SDL2_mixer not available (stub mode)\n";
+#endif
 
     m_initialized = true;
-    std::cout << "AudioSystem: Initialization complete (stub mode)\n";
     return true;
 }
 
@@ -50,8 +54,9 @@ void AudioSystem::shutdown() {
 
     unloadAllSounds();
 
-    // TODO: Close SDL2_mixer
-    // Mix_CloseAudio();
+#ifdef MCGNG_HAS_SDL2_MIXER
+    Mix_CloseAudio();
+#endif
 
     m_initialized = false;
 }
@@ -63,17 +68,21 @@ SoundHandle AudioSystem::loadSound(const std::string& path) {
 
     std::cout << "AudioSystem: Loading sound: " << path << "\n";
 
-    // TODO: Load sound with SDL2_mixer
-    // Mix_Chunk* chunk = Mix_LoadWAV(path.c_str());
-    // if (!chunk) {
-    //     std::cerr << "AudioSystem: Failed to load sound: " << path << "\n";
-    //     return INVALID_SOUND;
-    // }
+#ifdef MCGNG_HAS_SDL2_MIXER
+    Mix_Chunk* chunk = Mix_LoadWAV(path.c_str());
+    if (!chunk) {
+        std::cerr << "AudioSystem: Failed to load sound: " << path << " - " << Mix_GetError() << "\n";
+        return INVALID_SOUND;
+    }
 
     SoundHandle handle = m_nextSoundHandle++;
-    m_sounds[handle] = nullptr;  // Would store Mix_Chunk*
-
+    m_sounds[handle] = chunk;
     return handle;
+#else
+    SoundHandle handle = m_nextSoundHandle++;
+    m_sounds[handle] = nullptr;
+    return handle;
+#endif
 }
 
 SoundHandle AudioSystem::loadSoundFromMemory(const uint8_t* data, size_t size, AudioFormat format) {
@@ -83,27 +92,48 @@ SoundHandle AudioSystem::loadSoundFromMemory(const uint8_t* data, size_t size, A
 
     (void)format;  // TODO: Handle different formats
 
-    // TODO: Load from memory with SDL2_mixer
-    // SDL_RWops* rw = SDL_RWFromConstMem(data, size);
-    // Mix_Chunk* chunk = Mix_LoadWAV_RW(rw, 1);
+#ifdef MCGNG_HAS_SDL2_MIXER
+    SDL_RWops* rw = SDL_RWFromConstMem(data, static_cast<int>(size));
+    if (!rw) {
+        std::cerr << "AudioSystem: Failed to create RWops from memory\n";
+        return INVALID_SOUND;
+    }
+    Mix_Chunk* chunk = Mix_LoadWAV_RW(rw, 1);  // 1 = free RWops after load
+    if (!chunk) {
+        std::cerr << "AudioSystem: Failed to load sound from memory: " << Mix_GetError() << "\n";
+        return INVALID_SOUND;
+    }
 
     SoundHandle handle = m_nextSoundHandle++;
-    m_sounds[handle] = nullptr;
-
+    m_sounds[handle] = chunk;
     return handle;
+#else
+    SoundHandle handle = m_nextSoundHandle++;
+    m_sounds[handle] = nullptr;
+    return handle;
+#endif
 }
 
 void AudioSystem::unloadSound(SoundHandle sound) {
     auto it = m_sounds.find(sound);
     if (it != m_sounds.end()) {
-        // TODO: Free sound with SDL2_mixer
-        // Mix_FreeChunk(static_cast<Mix_Chunk*>(it->second));
+#ifdef MCGNG_HAS_SDL2_MIXER
+        if (it->second) {
+            Mix_FreeChunk(static_cast<Mix_Chunk*>(it->second));
+        }
+#endif
         m_sounds.erase(it);
     }
 }
 
 void AudioSystem::unloadAllSounds() {
-    // TODO: Free all sounds
+#ifdef MCGNG_HAS_SDL2_MIXER
+    for (auto& pair : m_sounds) {
+        if (pair.second) {
+            Mix_FreeChunk(static_cast<Mix_Chunk*>(pair.second));
+        }
+    }
+#endif
     m_sounds.clear();
 }
 
@@ -113,21 +143,27 @@ ChannelHandle AudioSystem::playSound(SoundHandle sound, bool loop, float volume)
     }
 
     auto it = m_sounds.find(sound);
-    if (it == m_sounds.end()) {
+    if (it == m_sounds.end() || !it->second) {
         return INVALID_CHANNEL;
     }
 
     int sdlVolume = calculateVolume(volume);
     int loops = loop ? -1 : 0;
 
-    // TODO: Play with SDL2_mixer
-    // Mix_VolumeChunk(static_cast<Mix_Chunk*>(it->second), sdlVolume);
-    // int channel = Mix_PlayChannel(-1, static_cast<Mix_Chunk*>(it->second), loops);
-
+#ifdef MCGNG_HAS_SDL2_MIXER
+    Mix_Chunk* chunk = static_cast<Mix_Chunk*>(it->second);
+    Mix_VolumeChunk(chunk, sdlVolume);
+    int channel = Mix_PlayChannel(-1, chunk, loops);
+    if (channel == -1) {
+        std::cerr << "AudioSystem: Failed to play sound: " << Mix_GetError() << "\n";
+        return INVALID_CHANNEL;
+    }
+    return channel;
+#else
     (void)sdlVolume;
     (void)loops;
-
-    return 0;  // Return first channel as placeholder
+    return 0;
+#endif
 }
 
 ChannelHandle AudioSystem::playSoundPanned(SoundHandle sound, float pan, float volume) {
@@ -143,8 +179,9 @@ void AudioSystem::stopChannel(ChannelHandle channel) {
         return;
     }
 
-    // TODO: Stop with SDL2_mixer
-    // Mix_HaltChannel(channel);
+#ifdef MCGNG_HAS_SDL2_MIXER
+    Mix_HaltChannel(channel);
+#endif
 }
 
 void AudioSystem::stopAllSounds() {
@@ -152,8 +189,9 @@ void AudioSystem::stopAllSounds() {
         return;
     }
 
-    // TODO: Stop all with SDL2_mixer
-    // Mix_HaltChannel(-1);
+#ifdef MCGNG_HAS_SDL2_MIXER
+    Mix_HaltChannel(-1);
+#endif
 }
 
 void AudioSystem::pauseChannel(ChannelHandle channel) {
@@ -161,8 +199,9 @@ void AudioSystem::pauseChannel(ChannelHandle channel) {
         return;
     }
 
-    // TODO: Pause with SDL2_mixer
-    // Mix_Pause(channel);
+#ifdef MCGNG_HAS_SDL2_MIXER
+    Mix_Pause(channel);
+#endif
 }
 
 void AudioSystem::resumeChannel(ChannelHandle channel) {
@@ -170,8 +209,9 @@ void AudioSystem::resumeChannel(ChannelHandle channel) {
         return;
     }
 
-    // TODO: Resume with SDL2_mixer
-    // Mix_Resume(channel);
+#ifdef MCGNG_HAS_SDL2_MIXER
+    Mix_Resume(channel);
+#endif
 }
 
 bool AudioSystem::isChannelPlaying(ChannelHandle channel) const {
@@ -179,10 +219,11 @@ bool AudioSystem::isChannelPlaying(ChannelHandle channel) const {
         return false;
     }
 
-    // TODO: Check with SDL2_mixer
-    // return Mix_Playing(channel) != 0;
-
+#ifdef MCGNG_HAS_SDL2_MIXER
+    return Mix_Playing(channel) != 0;
+#else
     return false;
+#endif
 }
 
 void AudioSystem::setChannelVolume(ChannelHandle channel, float volume) {
@@ -192,9 +233,11 @@ void AudioSystem::setChannelVolume(ChannelHandle channel, float volume) {
 
     int sdlVolume = calculateVolume(volume);
 
-    // TODO: Set volume with SDL2_mixer
-    // Mix_Volume(channel, sdlVolume);
+#ifdef MCGNG_HAS_SDL2_MIXER
+    Mix_Volume(channel, sdlVolume);
+#else
     (void)sdlVolume;
+#endif
 }
 
 void AudioSystem::setChannelPan(ChannelHandle channel, float pan) {
@@ -203,15 +246,16 @@ void AudioSystem::setChannelPan(ChannelHandle channel, float pan) {
     }
 
     // Convert -1.0...1.0 to SDL2_mixer format
-    // Left = 255, Right = 0 for SetPanning
     pan = std::clamp(pan, -1.0f, 1.0f);
     uint8_t left = static_cast<uint8_t>((1.0f - pan) * 127.5f);
     uint8_t right = static_cast<uint8_t>((1.0f + pan) * 127.5f);
 
-    // TODO: Set panning with SDL2_mixer
-    // Mix_SetPanning(channel, left, right);
+#ifdef MCGNG_HAS_SDL2_MIXER
+    Mix_SetPanning(channel, left, right);
+#else
     (void)left;
     (void)right;
+#endif
 }
 
 void AudioSystem::setMasterVolume(float volume) {
@@ -229,8 +273,9 @@ void AudioSystem::pauseAll() {
         return;
     }
 
-    // TODO: Pause all with SDL2_mixer
-    // Mix_Pause(-1);
+#ifdef MCGNG_HAS_SDL2_MIXER
+    Mix_Pause(-1);
+#endif
 }
 
 void AudioSystem::resumeAll() {
@@ -238,8 +283,9 @@ void AudioSystem::resumeAll() {
         return;
     }
 
-    // TODO: Resume all with SDL2_mixer
-    // Mix_Resume(-1);
+#ifdef MCGNG_HAS_SDL2_MIXER
+    Mix_Resume(-1);
+#endif
 }
 
 void AudioSystem::setMuted(bool muted) {

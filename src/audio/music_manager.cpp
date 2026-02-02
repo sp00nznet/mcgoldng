@@ -3,6 +3,10 @@
 #include <algorithm>
 #include <random>
 
+#ifdef MCGNG_HAS_SDL2_MIXER
+#include <SDL_mixer.h>
+#endif
+
 namespace mcgng {
 
 MusicManager& MusicManager::instance() {
@@ -27,7 +31,11 @@ bool MusicManager::initialize() {
     m_initialized = true;
     m_state = MusicState::Stopped;
 
-    std::cout << "MusicManager: Initialization complete (stub mode)\n";
+#ifdef MCGNG_HAS_SDL2_MIXER
+    std::cout << "MusicManager: SDL2_mixer available for music playback\n";
+#else
+    std::cout << "MusicManager: Running in stub mode (no audio)\n";
+#endif
     return true;
 }
 
@@ -122,17 +130,21 @@ MusicHandle MusicManager::loadTrack(const std::string& path) {
 
     std::cout << "MusicManager: Loading track: " << path << "\n";
 
-    // TODO: Load with SDL2_mixer
-    // Mix_Music* music = Mix_LoadMUS(path.c_str());
-    // if (!music) {
-    //     std::cerr << "MusicManager: Failed to load track: " << path << "\n";
-    //     return INVALID_MUSIC;
-    // }
+#ifdef MCGNG_HAS_SDL2_MIXER
+    Mix_Music* music = Mix_LoadMUS(path.c_str());
+    if (!music) {
+        std::cerr << "MusicManager: Failed to load track: " << path << " - " << Mix_GetError() << "\n";
+        return INVALID_MUSIC;
+    }
 
     MusicHandle handle = m_nextTrackHandle++;
-    m_tracks.push_back({handle, nullptr});  // Would store Mix_Music*
-
+    m_tracks.push_back({handle, music});
     return handle;
+#else
+    MusicHandle handle = m_nextTrackHandle++;
+    m_tracks.push_back({handle, nullptr});
+    return handle;
+#endif
 }
 
 void MusicManager::unloadTrack(MusicHandle track) {
@@ -140,17 +152,23 @@ void MusicManager::unloadTrack(MusicHandle track) {
         [track](const auto& pair) { return pair.first == track; });
 
     if (it != m_tracks.end()) {
-        // TODO: Free with SDL2_mixer
-        // Mix_FreeMusic(static_cast<Mix_Music*>(it->second));
+#ifdef MCGNG_HAS_SDL2_MIXER
+        if (it->second) {
+            Mix_FreeMusic(static_cast<Mix_Music*>(it->second));
+        }
+#endif
         m_tracks.erase(it);
     }
 }
 
 void MusicManager::unloadAllTracks() {
+#ifdef MCGNG_HAS_SDL2_MIXER
     for (auto& pair : m_tracks) {
-        // TODO: Free with SDL2_mixer
-        // Mix_FreeMusic(static_cast<Mix_Music*>(pair.second));
+        if (pair.second) {
+            Mix_FreeMusic(static_cast<Mix_Music*>(pair.second));
+        }
     }
+#endif
     m_tracks.clear();
 }
 
@@ -161,6 +179,7 @@ void MusicManager::play(MusicHandle track, float fadeInTime) {
 
     void* music = findTrack(track);
     if (!music) {
+        std::cerr << "MusicManager: Track not found\n";
         return;
     }
 
@@ -179,8 +198,13 @@ void MusicManager::play(MusicHandle track, float fadeInTime) {
 
     applyVolume();
 
-    // TODO: Play with SDL2_mixer
-    // Mix_PlayMusic(static_cast<Mix_Music*>(music), -1);
+#ifdef MCGNG_HAS_SDL2_MIXER
+    if (fadeInTime > 0.0f) {
+        Mix_FadeInMusic(static_cast<Mix_Music*>(music), -1, static_cast<int>(fadeInTime * 1000));
+    } else {
+        Mix_PlayMusic(static_cast<Mix_Music*>(music), -1);
+    }
+#endif
 }
 
 void MusicManager::stop(float fadeOutTime) {
@@ -189,13 +213,17 @@ void MusicManager::stop(float fadeOutTime) {
     }
 
     if (fadeOutTime > 0.0f) {
+#ifdef MCGNG_HAS_SDL2_MIXER
+        Mix_FadeOutMusic(static_cast<int>(fadeOutTime * 1000));
+#endif
         m_state = MusicState::FadingOut;
         m_fadeDuration = fadeOutTime;
         m_fadeTimer = 0.0f;
         m_nextTrack = INVALID_MUSIC;
     } else {
-        // TODO: Stop with SDL2_mixer
-        // Mix_HaltMusic();
+#ifdef MCGNG_HAS_SDL2_MIXER
+        Mix_HaltMusic();
+#endif
         m_state = MusicState::Stopped;
         m_currentTrack = INVALID_MUSIC;
         m_currentMusic = nullptr;
@@ -204,16 +232,18 @@ void MusicManager::stop(float fadeOutTime) {
 
 void MusicManager::pause() {
     if (m_state == MusicState::Playing) {
-        // TODO: Pause with SDL2_mixer
-        // Mix_PauseMusic();
+#ifdef MCGNG_HAS_SDL2_MIXER
+        Mix_PauseMusic();
+#endif
         m_state = MusicState::Paused;
     }
 }
 
 void MusicManager::resume() {
     if (m_state == MusicState::Paused) {
-        // TODO: Resume with SDL2_mixer
-        // Mix_ResumeMusic();
+#ifdef MCGNG_HAS_SDL2_MIXER
+        Mix_ResumeMusic();
+#endif
         m_state = MusicState::Playing;
     }
 }
@@ -316,9 +346,10 @@ void* MusicManager::findTrack(MusicHandle handle) const {
 }
 
 void MusicManager::applyVolume() {
-    // TODO: Apply volume with SDL2_mixer
-    // int sdlVolume = static_cast<int>(m_volume * MIX_MAX_VOLUME);
-    // Mix_VolumeMusic(sdlVolume);
+#ifdef MCGNG_HAS_SDL2_MIXER
+    int sdlVolume = static_cast<int>(m_volume * MIX_MAX_VOLUME);
+    Mix_VolumeMusic(sdlVolume);
+#endif
 }
 
 } // namespace mcgng
