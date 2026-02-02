@@ -11,8 +11,11 @@
 #include "graphics/renderer.h"
 #include "graphics/sprite.h"
 #include "graphics/palette.h"
+#include "graphics/terrain.h"
 #include "assets/pak_reader.h"
 #include "assets/shape_reader.h"
+#include "assets/nested_pak_reader.h"
+#include "assets/fst_reader.h"
 
 #include <iostream>
 #include <fstream>
@@ -50,16 +53,59 @@ void printUsage(const char* programName) {
 
 // Global sprite for testing
 std::unique_ptr<mcgng::Sprite> g_testSprite;
+std::unique_ptr<mcgng::Sprite> g_mechSprite;
+std::shared_ptr<mcgng::TerrainTileset> g_tileset;
 mcgng::Palette g_palette;
 int g_currentFrame = 0;
 float g_frameTimer = 0.0f;
 
+// Mech sprite data
+mcgng::NestedPakReader g_mechPak;
+
 // Macro for logging to both console and file
 #define LOG(msg) do { std::cout << msg << std::endl; if (g_debugLog.is_open()) g_debugLog << msg << std::endl; } while(0)
 
-bool loadTestSprites(const std::string& assetsPath) {
-    // Create default palette for testing
+bool loadGamePalette(const std::string& assetsPath) {
+    // Try to load palette from MISC.FST
+    std::vector<std::string> fstPaths = {
+        assetsPath + "\\MISC.FST",
+        assetsPath + "/MISC.FST",
+    };
+
+    mcgng::FstReader fst;
+    for (const auto& path : fstPaths) {
+        if (fst.open(path)) {
+            // Look for HB.PAL (main game palette)
+            auto palData = fst.readFile("data/palette/HB.PAL");
+
+            if (!palData.empty() && palData.size() >= 700) {
+                // MCG palettes may use 6-bit values (0-63), need to scale to 8-bit
+                bool is6bit = true;
+                for (size_t i = 0; i < std::min(palData.size(), size_t(768)); ++i) {
+                    if (palData[i] > 63) {
+                        is6bit = false;
+                        break;
+                    }
+                }
+
+                if (g_palette.load(palData.data(), palData.size(), is6bit)) {
+                    LOG("Loaded game palette from MISC.FST (HB.PAL, " +
+                        std::string(is6bit ? "6-bit" : "8-bit") + ")");
+                    return true;
+                }
+            }
+            break;
+        }
+    }
+
+    LOG("Could not load game palette, using default");
     g_palette = mcgng::Palette::createDefault();
+    return false;
+}
+
+bool loadTestSprites(const std::string& assetsPath) {
+    // Load game palette first
+    loadGamePalette(assetsPath);
 
     LOG("loadTestSprites: assetsPath = " + assetsPath);
 
@@ -154,6 +200,150 @@ bool loadTestSprites(const std::string& assetsPath) {
     return false;
 }
 
+bool loadMechSprites(const std::string& assetsPath) {
+    // Try to load mech torsos
+    std::vector<std::string> mechPaths = {
+        assetsPath + "\\DATA\\SPRITES\\TORSOS.PAK",
+        assetsPath + "/DATA/SPRITES/TORSOS.PAK",
+    };
+
+    for (const auto& path : mechPaths) {
+        LOG("Trying to open mech PAK: " + path);
+        if (g_mechPak.open(path)) {
+            LOG("Loaded mech PAK with " + std::to_string(g_mechPak.getMechCount()) + " mech types");
+
+            // Try to create sprite from any mech with valid frames
+            for (uint32_t m = 0; m < g_mechPak.getMechCount(); ++m) {
+                const mcgng::MechSpriteSet* mech = g_mechPak.getMech(m);
+                if (!mech) continue;
+
+                // Try mech format first - look for a larger frame
+                if (mech->getMechFrameCount() > 0) {
+                    // Try to find a larger frame (later frames tend to be bigger)
+                    int bestIdx = -1;
+                    int bestSize = 0;
+                    for (uint32_t f = 0; f < mech->getMechFrameCount(); ++f) {
+                        const mcgng::MechShapeReader* fr = mech->getMechFrame(f);
+                        if (fr && fr->isLoaded()) {
+                            int sz = fr->getWidth() * fr->getHeight();
+                            if (sz > bestSize) {
+                                bestSize = sz;
+                                bestIdx = static_cast<int>(f);
+                            }
+                        }
+                    }
+                    if (bestIdx >= 0) {
+                        const mcgng::MechShapeReader* frame = mech->getMechFrame(static_cast<uint32_t>(bestIdx));
+                        mcgng::ShapeData shapeData = frame->decode();
+                        if (!shapeData.pixels.empty()) {
+                            g_mechSprite = std::make_unique<mcgng::Sprite>();
+                            if (g_mechSprite->loadFromShape(shapeData, g_palette)) {
+                                LOG("Loaded mech sprite from type " + std::to_string(m) +
+                                    ": " + std::to_string(shapeData.width) +
+                                    "x" + std::to_string(shapeData.height));
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                // Fall back to standard shape format
+                if (mech->getFrameCount() > 0) {
+                    const mcgng::ShapeReader* frame = mech->getFrame(0);
+                    if (frame && frame->getShapeCount() > 0) {
+                        mcgng::ShapeData shapeData = frame->decodeShape(0);
+                        if (!shapeData.pixels.empty()) {
+                            g_mechSprite = std::make_unique<mcgng::Sprite>();
+                            if (g_mechSprite->loadFromShape(shapeData, g_palette)) {
+                                LOG("Loaded mech sprite (std) from type " + std::to_string(m) +
+                                    ": " + std::to_string(shapeData.width) +
+                                    "x" + std::to_string(shapeData.height));
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            break;
+        }
+    }
+
+    LOG("Failed to load mech sprites");
+    return false;
+}
+
+bool loadTerrainTiles(const std::string& assetsPath) {
+    // Try to load terrain tiles
+    std::vector<std::string> tilePaths = {
+        assetsPath + "\\DATA\\TILES\\TILES.PAK",
+        assetsPath + "/DATA/TILES/TILES.PAK",
+    };
+
+    mcgng::PakReader pak;
+    for (const auto& path : tilePaths) {
+        if (pak.open(path)) {
+            LOG("Opened tiles PAK: " + path + " with " + std::to_string(pak.getNumPackets()) + " packets");
+
+            // TILES.PAK has null packets at the start, real tiles start around 4014
+            // Let's find the first non-null packet
+            g_tileset = std::make_shared<mcgng::TerrainTileset>();
+            auto& renderer = mcgng::Renderer::instance();
+
+            int tilesLoaded = 0;
+            int checkedPackets = 0;
+            int maxPacketsToCheck = 5;  // Keep small for fast startup
+
+            int nullSkipped = 0;
+            for (size_t i = 4014; i < pak.getNumPackets() && tilesLoaded < 5 && checkedPackets < maxPacketsToCheck; ++i) {
+                auto entry = pak.getEntry(i);
+                if (!entry || entry->storageType == mcgng::PakStorageType::NUL) {
+                    ++nullSkipped;
+                    continue;
+                }
+
+                std::vector<uint8_t> tileData = pak.readPacket(i);
+                if (tileData.empty()) {
+                    continue;
+                }
+
+                ++checkedPackets;
+
+                // Try different tile sizes
+                // Original MCG tiles might be smaller or use different formats
+                int width = 0, height = 0;
+
+                // MCG tiles are typically 45x45 or 90x90
+                // The data might include headers or be RLE compressed
+                if (tileData.size() >= 4050) {  // 90x45 or more
+                    width = 90; height = 45;
+                } else if (tileData.size() >= 2025) {  // 45x45
+                    width = height = 45;
+                } else if (tileData.size() >= 1024) {  // 32x32
+                    width = height = 32;
+                } else if (tileData.size() >= 400) {  // 20x20
+                    width = height = 20;
+                } else if (tileData.size() >= 256) {  // 16x16
+                    width = height = 16;
+                }
+
+                if (width > 0) {
+                    int idx = g_tileset->addTile(tileData.data(), g_palette.data(), width, height);
+                    if (idx >= 0) {
+                        ++tilesLoaded;
+                    }
+                }
+            }
+
+            LOG("Tiles: checked " + std::to_string(checkedPackets) + " packets, skipped " +
+                std::to_string(nullSkipped) + " null, loaded " + std::to_string(tilesLoaded));
+            return tilesLoaded > 0;
+        }
+    }
+
+    LOG("Failed to load terrain tiles");
+    return false;
+}
+
 int main(int argc, char* argv[]) {
     // Open debug log file
     g_debugLog.open("mcgoldng_debug.log");
@@ -216,12 +406,28 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Try to load test sprites
+    // Try to load test sprites (cursors)
     bool spritesLoaded = loadTestSprites(options.assetsPath);
     if (spritesLoaded) {
-        std::cout << "Test sprites loaded successfully!\n";
+        std::cout << "Cursor sprites loaded successfully!\n";
     } else {
-        std::cout << "Could not load test sprites - continuing with basic rendering\n";
+        std::cout << "Could not load cursor sprites\n";
+    }
+
+    // Try to load mech sprites
+    bool mechsLoaded = loadMechSprites(options.assetsPath);
+    if (mechsLoaded) {
+        std::cout << "Mech sprites loaded successfully!\n";
+    } else {
+        std::cout << "Could not load mech sprites\n";
+    }
+
+    // Try to load terrain tiles
+    bool terrainLoaded = loadTerrainTiles(options.assetsPath);
+    if (terrainLoaded) {
+        std::cout << "Terrain tiles loaded successfully!\n";
+    } else {
+        std::cout << "Could not load terrain tiles\n";
     }
 
     // Set up callbacks
@@ -237,29 +443,66 @@ int main(int argc, char* argv[]) {
         }
     });
 
+    // Debug: Check loading status
+    LOG("Render check: mechSprite=" + std::string(g_mechSprite ? "exists" : "null") +
+        " isLoaded=" + std::string((g_mechSprite && g_mechSprite->isLoaded()) ? "yes" : "no"));
+    LOG("Render check: tileset=" + std::string(g_tileset ? "exists" : "null") +
+        " count=" + std::to_string(g_tileset ? g_tileset->getTileCount() : 0));
+
     engine.setRenderCallback([]() {
         auto& renderer = mcgng::Renderer::instance();
 
-        // Draw the test sprite if loaded
+        // Draw cursor sprites at top
         if (g_testSprite && g_testSprite->isLoaded()) {
-            // Draw at multiple positions to show the sprite
-            g_testSprite->draw(100, 100);
-            g_testSprite->draw(200, 100);
-            g_testSprite->draw(300, 100);
-            g_testSprite->draw(400, 100);
-
-            // Draw scaled version
-            g_testSprite->drawScaled(100, 250, 2.0f, 2.0f);
-            g_testSprite->drawScaled(250, 250, 3.0f, 3.0f);
-        } else {
-            // Draw placeholder text area
-            renderer.setDrawColor({100, 100, 150, 255});
-            renderer.drawRect({100, 100, 200, 50});
+            for (int i = 0; i < 8; ++i) {
+                g_testSprite->draw(50 + i * 60, 50);
+            }
         }
 
-        // Draw info text area
-        renderer.setDrawColor({40, 40, 60, 200});
-        renderer.drawRect({10, 550, 300, 40});
+        // Draw mech sprite if loaded
+        if (g_mechSprite && g_mechSprite->isLoaded()) {
+            // Draw a bright marker behind the mech so we can see if position is correct
+            renderer.setDrawColor({255, 0, 255, 255});  // Bright magenta
+            renderer.drawRect({355, 255, 90, 90});  // Box behind scaled mech
+
+            // Draw at center, scaled up
+            g_mechSprite->drawScaled(400, 300, 3.0f, 3.0f);
+
+            // Draw markers and smaller versions
+            renderer.setDrawColor({0, 255, 0, 255});  // Bright green
+            renderer.drawRect({95, 395, 30, 30});  // Box behind first small mech
+
+            g_mechSprite->draw(100, 400);
+            g_mechSprite->draw(200, 400);
+            g_mechSprite->draw(300, 400);
+        } else {
+            // Draw placeholder rectangle so we can see something
+            renderer.setDrawColor({100, 100, 150, 255});
+            renderer.drawRect({350, 250, 100, 100});
+        }
+
+        // Draw terrain tiles if loaded (sample grid)
+        if (g_tileset && g_tileset->getTileCount() > 0) {
+            int tileX = 500;
+            int tileY = 150;
+            int tilesPerRow = 10;
+            int tilesDrawn = 0;
+            int maxTiles = std::min(50, g_tileset->getTileCount());
+
+            for (int i = 0; i < maxTiles; ++i) {
+                mcgng::TextureHandle tex = g_tileset->getTileTexture(i);
+                if (tex != mcgng::INVALID_TEXTURE) {
+                    int x = tileX + (tilesDrawn % tilesPerRow) * 50;
+                    int y = tileY + (tilesDrawn / tilesPerRow) * 50;
+                    renderer.drawTexture(tex, x, y);
+                    ++tilesDrawn;
+                }
+            }
+        }
+
+        // Draw info panel background
+        renderer.setDrawColor({30, 30, 40, 220});
+        renderer.drawRect({10, 10, 200, 30});
     });
 
     engine.setEventCallback([]() -> bool {

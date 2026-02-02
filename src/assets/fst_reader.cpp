@@ -152,21 +152,31 @@ std::vector<uint8_t> FstReader::readFile(const FstEntry& entry) {
         return {};
     }
 
-    // Read raw (possibly compressed) data
-    uint32_t readSize = entry.isCompressed() ? entry.compressedSize : entry.uncompressedSize;
-    auto rawData = readRawData(entry.dataOffset, readSize);
+    // In MCG FST, compressedSize often equals uncompressedSize even for uncompressed data
+    // Try reading uncompressedSize first, then fall back to compressedSize
+    auto rawData = readRawData(entry.dataOffset, entry.uncompressedSize);
+
+    if (rawData.empty() && entry.compressedSize != entry.uncompressedSize) {
+        rawData = readRawData(entry.dataOffset, entry.compressedSize);
+    }
 
     if (rawData.empty()) {
         return {};
     }
 
-    // If not compressed, return as-is
-    if (!entry.isCompressed()) {
-        return rawData;
+    // If sizes differ, try decompression
+    if (entry.compressedSize < entry.uncompressedSize && entry.compressedSize > 0) {
+        // Try LZ decompression
+        auto result = decompress(rawData.data(),
+                                 std::min(rawData.size(), size_t(entry.compressedSize)),
+                                 entry.uncompressedSize, false);
+        if (!result.empty() && result.size() >= entry.uncompressedSize / 2) {
+            return result;
+        }
     }
 
-    // Decompress using LZ
-    return decompress(rawData.data(), rawData.size(), entry.uncompressedSize, false);
+    // Return raw data
+    return rawData;
 }
 
 std::vector<uint8_t> FstReader::readFile(const std::string& path) {

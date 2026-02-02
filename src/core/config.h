@@ -18,8 +18,8 @@ using ConfigValue = std::variant<bool, int64_t, double, std::string>;
  */
 struct GameConfig {
     // Display settings
-    int windowWidth = 1920;
-    int windowHeight = 1080;
+    int windowWidth = 1280;
+    int windowHeight = 720;
     bool fullscreen = false;
     bool vsync = true;
     int targetFPS = 60;

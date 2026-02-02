@@ -52,6 +52,16 @@ public:
               int tileWidth, int tileHeight, int tileCount);
 
     /**
+     * Add a single tile from indexed pixel data.
+     * @param pixels Indexed pixel data
+     * @param palette 256-color palette (768 bytes RGB)
+     * @param width Tile width
+     * @param height Tile height
+     * @return index of added tile, or -1 on error
+     */
+    int addTile(const uint8_t* pixels, const uint8_t* palette, int width, int height);
+
+    /**
      * Get the texture for a tile.
      */
     TextureHandle getTileTexture(int index) const;

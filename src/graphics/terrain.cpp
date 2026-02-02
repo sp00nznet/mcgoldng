@@ -1,6 +1,7 @@
 #include "graphics/terrain.h"
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 
 namespace mcgng {
 
@@ -45,6 +46,38 @@ bool TerrainTileset::load(const uint8_t* pixels, const uint8_t* palette,
     }
 
     return true;
+}
+
+int TerrainTileset::addTile(const uint8_t* pixels, const uint8_t* palette, int width, int height) {
+    if (!pixels || !palette || width <= 0 || height <= 0) {
+        return -1;
+    }
+
+    // Set tile size from first tile
+    if (m_tiles.empty()) {
+        m_tileWidth = width;
+        m_tileHeight = height;
+    }
+
+    // Debug: count non-zero pixels
+    int nonZero = 0;
+    for (int i = 0; i < width * height; ++i) {
+        if (pixels[i] != 0) ++nonZero;
+    }
+    std::cout << "TerrainTileset::addTile: " << width << "x" << height
+              << ", non-zero: " << nonZero << "/" << (width * height) << std::endl;
+
+    auto& renderer = Renderer::instance();
+    TextureHandle texture = renderer.createTextureIndexed(pixels, palette, width, height);
+
+    std::cout << "  texture handle: " << texture << std::endl;
+
+    if (texture == INVALID_TEXTURE) {
+        return -1;
+    }
+
+    m_tiles.push_back(texture);
+    return static_cast<int>(m_tiles.size() - 1);
 }
 
 TextureHandle TerrainTileset::getTileTexture(int index) const {

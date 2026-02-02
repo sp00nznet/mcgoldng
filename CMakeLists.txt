@@ -65,6 +65,7 @@ add_library(mcgng_assets STATIC
     src/assets/pak_reader.cpp
     src/assets/fit_parser.cpp
     src/assets/shape_reader.cpp
+    src/assets/nested_pak_reader.cpp
 )
 
 target_include_directories(mcgng_assets PUBLIC
@@ -91,10 +92,20 @@ if(MCGNG_BUILD_TOOLS)
         mcgng_assets
     )
 
+    add_executable(pak-inspect
+        tools/pak_inspect.cpp
+    )
+
+    add_executable(mech-analyze
+        tools/mech_analyze.cpp
+    )
+
     if(MSVC)
         target_compile_options(mcg-extract PRIVATE /W4)
+        target_compile_options(pak-inspect PRIVATE /W4)
     else()
         target_compile_options(mcg-extract PRIVATE -Wall -Wextra)
+        target_compile_options(pak-inspect PRIVATE -Wall -Wextra)
     endif()
 endif()
 

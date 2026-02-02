@@ -1,6 +1,7 @@
 #include "graphics/sprite.h"
 #include <algorithm>
 #include <iostream>
+#include <set>
 
 namespace mcgng {
 
@@ -106,10 +107,26 @@ bool Sprite::loadFromShape(const ShapeData& shape, const Palette& palette) {
 
     destroyTextures();
 
+    // Debug: count non-zero pixels
+    size_t nonZeroPixels = 0;
+    for (uint8_t p : shape.pixels) {
+        if (p != 0) ++nonZeroPixels;
+    }
+    std::cout << "Sprite::loadFromShape: " << shape.width << "x" << shape.height
+              << ", non-zero pixels: " << nonZeroPixels << "/" << shape.pixels.size() << std::endl;
+
     // Convert indexed pixels to RGBA
     size_t pixelCount = static_cast<size_t>(shape.width * shape.height);
     std::vector<uint8_t> rgba(pixelCount * 4);
     palette.convertToRGBA(shape.pixels.data(), rgba.data(), pixelCount, 0);
+
+    // Debug: count non-transparent RGBA pixels
+    size_t visiblePixels = 0;
+    for (size_t i = 0; i < pixelCount; ++i) {
+        if (rgba[i * 4 + 3] != 0) ++visiblePixels;
+    }
+    std::cout << "Sprite::loadFromShape: visible (non-transparent) pixels: "
+              << visiblePixels << "/" << pixelCount << std::endl;
 
     // Create texture
     SpriteFrame frame;
@@ -118,6 +135,8 @@ bool Sprite::loadFromShape(const ShapeData& shape, const Palette& palette) {
     frame.height = shape.height;
     frame.offsetX = shape.hotspotX;
     frame.offsetY = shape.hotspotY;
+
+    std::cout << "Sprite::loadFromShape: texture handle = " << frame.texture << std::endl;
 
     if (frame.texture == INVALID_TEXTURE) {
         std::cerr << "Sprite: Failed to create texture from shape" << std::endl;
@@ -252,6 +271,15 @@ void Sprite::draw(int x, int y) {
     int drawX = x - frame.offsetX;
     int drawY = y - frame.offsetY;
 
+    // Debug (only log once per texture)
+    static std::set<TextureHandle> loggedTextures;
+    if (loggedTextures.find(frame.texture) == loggedTextures.end()) {
+        std::cout << "Sprite::draw: tex=" << frame.texture
+                  << " at (" << drawX << "," << drawY << ") size "
+                  << frame.width << "x" << frame.height << std::endl;
+        loggedTextures.insert(frame.texture);
+    }
+
     if (m_flipH || m_flipV) {
         Rect dstRect = {drawX, drawY, frame.width, frame.height};
         renderer.drawTextureEx(frame.texture, nullptr, &dstRect, 0.0f, m_flipH, m_flipV);
@@ -278,6 +306,15 @@ void Sprite::drawScaled(int x, int y, float scaleX, float scaleY) {
     int drawY = y - static_cast<int>(frame.offsetY * scaleY);
     int drawW = static_cast<int>(frame.width * scaleX);
     int drawH = static_cast<int>(frame.height * scaleY);
+
+    // Debug (log once per texture for scaled draws)
+    static std::set<TextureHandle> loggedScaled;
+    if (loggedScaled.find(frame.texture) == loggedScaled.end()) {
+        std::cout << "Sprite::drawScaled: tex=" << frame.texture
+                  << " at (" << drawX << "," << drawY << ") size "
+                  << drawW << "x" << drawH << std::endl;
+        loggedScaled.insert(frame.texture);
+    }
 
     Rect dstRect = {drawX, drawY, drawW, drawH};
     renderer.drawTextureEx(frame.texture, nullptr, &dstRect, 0.0f, m_flipH, m_flipV);

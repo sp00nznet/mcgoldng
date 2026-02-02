@@ -101,6 +101,7 @@ private:
     const uint8_t* m_data = nullptr;
     size_t m_size = 0;
     bool m_loaded = false;
+    size_t m_headerOffset = 0;  // Offset to version string (0 or 7)
 
     std::string m_version;
     uint32_t m_shapeCount = 0;
@@ -109,6 +110,55 @@ private:
     // Decode RLE pixel data
     bool decodeRLE(const uint8_t* src, size_t srcSize,
                    uint8_t* dest, int width, int height) const;
+};
+
+/**
+ * Mech Shape Reader - simplified format for mech sprites.
+ *
+ * MCG mech sprites have a 6-byte prefix before standard SHP format:
+ *   Bytes 0-1:  Format ID (0x0100)
+ *   Bytes 2-3:  Width (big-endian)
+ *   Bytes 4-5:  Height (big-endian)
+ *   Byte 6+:    Standard shape data or version string
+ *
+ * According to thegameengine.org: "Delete the first 6 bytes" for standard editors
+ */
+class MechShapeReader {
+public:
+    MechShapeReader() = default;
+
+    /**
+     * Load mech shape from memory.
+     * @param data Pointer to shape data
+     * @param size Size of data in bytes
+     * @return true on success
+     */
+    bool load(const uint8_t* data, size_t size);
+
+    /**
+     * Check if loaded.
+     */
+    bool isLoaded() const { return m_loaded; }
+
+    /**
+     * Get dimensions.
+     */
+    int getWidth() const { return m_width; }
+    int getHeight() const { return m_height; }
+
+    /**
+     * Decode the shape to pixel data.
+     */
+    ShapeData decode() const;
+
+private:
+    const uint8_t* m_data = nullptr;
+    size_t m_size = 0;
+    bool m_loaded = false;
+    int m_width = 0;
+    int m_height = 0;
+    size_t m_headerOffset = 6;  // Offset to shape data (after 6-byte prefix)
+    std::string m_version;
 };
 
 /**

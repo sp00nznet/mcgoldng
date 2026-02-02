@@ -212,13 +212,32 @@ std::vector<uint8_t> PakReader::readPacket(size_t index) {
             return readRawData(entry->offset, entry->packedSize);
 
         case PakStorageType::LZD: {
-            // Skip the uncompressed size field (4 bytes) at the start
+            // First read the uncompressed size from the data
+            auto sizeData = readRawData(entry->offset, sizeof(uint32_t));
+            if (sizeData.size() < 4) {
+                return {};
+            }
+            uint32_t storedSize;
+            std::memcpy(&storedSize, sizeData.data(), 4);
+
+            // Read the compressed data
             auto rawData = readRawData(entry->offset + sizeof(uint32_t),
                                        entry->packedSize - sizeof(uint32_t));
             if (rawData.empty()) {
                 return {};
             }
-            return decompress(rawData.data(), rawData.size(), entry->unpackedSize, false);
+
+            // Try decompression
+            auto result = decompress(rawData.data(), rawData.size(), entry->unpackedSize, false);
+
+            // If decompression returned much less than expected, maybe data isn't actually compressed
+            // MCG might use different format markers - return raw data as fallback
+            if (result.size() < entry->unpackedSize / 2 && result.size() < rawData.size()) {
+                // Return raw data without the size prefix
+                return rawData;
+            }
+
+            return result;
         }
 
         case PakStorageType::ZLIB: {

@@ -225,7 +225,17 @@ std::vector<uint8_t> decompress(const uint8_t* src, size_t srcLen,
     if (useZlib) {
         actualSize = zlibDecompress(src, srcLen, result.data(), uncompressedSize);
     } else {
+        // Try LZW first
         actualSize = lzDecompress(src, srcLen, result.data(), uncompressedSize);
+
+        // If LZW failed or returned very little data, try zlib as fallback
+        // MCG may use different compression than MC2
+        if (actualSize < uncompressedSize / 2) {
+            size_t zlibSize = zlibDecompress(src, srcLen, result.data(), uncompressedSize);
+            if (zlibSize > actualSize) {
+                actualSize = zlibSize;
+            }
+        }
     }
 
     if (actualSize == 0) {
