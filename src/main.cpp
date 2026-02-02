@@ -18,6 +18,7 @@
 #include "assets/shape_reader.h"
 #include "assets/nested_pak_reader.h"
 #include "assets/fst_reader.h"
+#include "assets/tga_loader.h"
 
 #include <iostream>
 #include <fstream>
@@ -66,6 +67,10 @@ mcgng::NestedPakReader g_mechPak;
 
 // Music
 mcgng::MusicHandle g_musicTrack = mcgng::INVALID_MUSIC;
+
+// UI textures
+mcgng::TextureHandle g_uiButtonTexture = mcgng::INVALID_TEXTURE;
+mcgng::TextureHandle g_uiBackgroundTexture = mcgng::INVALID_TEXTURE;
 
 // Macro for logging to both console and file
 #define LOG(msg) do { std::cout << msg << std::endl; if (g_debugLog.is_open()) g_debugLog << msg << std::endl; } while(0)
@@ -388,6 +393,36 @@ bool initializeAudio(const std::string& assetsPath) {
     return false;
 }
 
+bool loadUITextures(const std::string& assetsPath) {
+    // Try to load UI graphics from extracted TGA files
+    std::vector<std::string> tgaPaths = {
+        assetsPath + "\\ART.FST\\BG_EXIT.tga",
+        assetsPath + "/ART.FST/BG_EXIT.tga",
+    };
+
+    // Try the extracted MCGExtracted folder too
+    std::string mcgExtracted = "D:\\mcgoldng\\mcgextracted\\MCGExtracted-master\\ART.FST";
+    tgaPaths.push_back(mcgExtracted + "\\BG_EXIT.tga");
+    tgaPaths.push_back(mcgExtracted + "\\ACCESS00.tga");
+
+    auto& renderer = mcgng::Renderer::instance();
+
+    for (const auto& path : tgaPaths) {
+        mcgng::TgaImage img = mcgng::TgaLoader::loadFromFile(path);
+        if (img.isValid()) {
+            // Create texture from TGA
+            g_uiButtonTexture = renderer.createTexture(img.pixels.data(), img.width, img.height);
+            if (g_uiButtonTexture != mcgng::INVALID_TEXTURE) {
+                LOG("Loaded UI texture: " + path + " (" + std::to_string(img.width) + "x" + std::to_string(img.height) + ")");
+                return true;
+            }
+        }
+    }
+
+    LOG("Could not load UI textures");
+    return false;
+}
+
 int main(int argc, char* argv[]) {
     // Open debug log file
     g_debugLog.open("mcgoldng_debug.log");
@@ -482,6 +517,14 @@ int main(int argc, char* argv[]) {
         std::cout << "Audio not available\n";
     }
 
+    // Load UI textures
+    bool uiLoaded = loadUITextures(options.assetsPath);
+    if (uiLoaded) {
+        std::cout << "UI textures loaded!\n";
+    } else {
+        std::cout << "Could not load UI textures\n";
+    }
+
     // Set up callbacks
     engine.setUpdateCallback([](float deltaTime) {
         // Update music manager (for fade effects)
@@ -553,6 +596,11 @@ int main(int argc, char* argv[]) {
                     ++tilesDrawn;
                 }
             }
+        }
+
+        // Draw UI texture if loaded
+        if (g_uiButtonTexture != mcgng::INVALID_TEXTURE) {
+            renderer.drawTexture(g_uiButtonTexture, 600, 500);
         }
 
         // Draw info panel background
