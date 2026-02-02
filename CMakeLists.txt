@@ -66,6 +66,7 @@ add_library(mcgng_assets STATIC
     src/assets/fit_parser.cpp
     src/assets/shape_reader.cpp
     src/assets/nested_pak_reader.cpp
+    src/assets/tga_loader.cpp
 )
 
 target_include_directories(mcgng_assets PUBLIC
